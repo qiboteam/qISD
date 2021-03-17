@@ -23,13 +23,36 @@ class lin_sys:
         '''Generates specific instance.
         
         '''
+        def solve_gf2(A,t):
+            r=A.shape[0]
+            b=np.copy(t)
+            for i in range(r):    
+                for j in range(i+1,r):
+                    if A[j,i]==1:
+                        if A[i,i]!=1:
+                            A[i]^=A[j]
+                            b[i]^=b[j]
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+                if A[i,i]!=1:
+                    raise ValueError("not invertible")
+            for i in reversed(range(r)):
+                for j in range(i):
+                    if A[j,i]==1:
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+            return b
+        
         solutions = []
         while(len(solutions)<self.sol):
             solutions=[]
             A=np.random.randint(2, size=(self.r, self.n))
             b=np.random.randint(2, size=(self.r,1))
+            if all(b[i]==0 for i in range(self.r)):
+                continue
             comb=itertools.combinations([i for i in range(self.n)],self.r)
             Aprime=np.arange(self.r*self.r).reshape(self.r,self.r)
+            first = 1
             for i in comb:
                 ind=0
                 for j in i:
@@ -43,7 +66,7 @@ class lin_sys:
                 while (len(v)<self.n):
                     v="0"+v
                 try:
-                    solu=np.linalg.solve(Aprime,b)%2
+                    solu=solve_gf2(Aprime,b)
                     for it in reversed(solu):
                         if it==0:
                             v="0"+v
@@ -52,6 +75,9 @@ class lin_sys:
                     solutions.append(v)
                 except:
                     pass
+                if len(solutions)==0 and first==1:
+                    break
+                first=0
         return A, b, solutions
     
     
@@ -75,6 +101,26 @@ class isd_quantum:
     
     '''
     def __init__(self, n, r, A, b):
+        def solve_gf2(A,t):
+            r=A.shape[0]
+            b=np.copy(t)
+            for i in range(r):    
+                for j in range(i+1,r):
+                    if A[j,i]==1:
+                        if A[i,i]!=1:
+                            A[i]^=A[j]
+                            b[i]^=b[j]
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+                if A[i,i]!=1:
+                    raise ValueError("not invertible")
+            for i in reversed(range(r)):
+                for j in range(i):
+                    if A[j,i]==1:
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+            return b
+        b=solve_gf2(A,b)
         '''
         Sets the specifications of the linear system to solve.
         
@@ -84,6 +130,7 @@ class isd_quantum:
         self.A = A
         self.b = b
         self.L = self.superposition_probabilities()
+        self.n_anc = int(np.ceil(np.log2(self.r+1)))
         self.setup_q_registers()
         
         
@@ -92,9 +139,8 @@ class isd_quantum:
         
         '''
         self.perm = [i for i in range(self.n)]
-        self.ancillas = [i for i in range(self.n,self.n+self.r)]
-        self.H = np.arange(self.n+self.r, self.n+self.r+(self.n+1)*self.r).reshape(self.n+1, self.r).transpose()
-        self.ancillas2 = [i for i in range(self.n+self.r+(self.n+1)*self.r, self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1))))]        
+        self.ancillas = [i for i in range(self.n,self.n+self.n_anc)]
+        self.H = np.arange(self.n+self.n_anc, self.n+self.n_anc+(self.n-self.r+1)*self.r).reshape(self.n-self.r+1, self.r).transpose()
         
         
     def superposition_probabilities(self):
@@ -122,20 +168,27 @@ class isd_quantum:
         '''Creates an equal quantum superposition over the column choices.
         
         '''
-        c = Circuit(self.n+self.r)
-        c.add(gates.X(self.n+self.r-1))
+        c = Circuit(self.n+self.n_anc)
+        c.add(self.set_ancillas_to_num(self.ancillas, self.r))
+        tmp = self.n
+        
         for i in self.L:
+            if tmp!=i[0]:
+                c.add(self.sub_one(self.ancillas,[self.n-tmp]))
+                tmp=i[0]
+                
             if(i[2]==(0,1)):
-                c.add(gates.CNOT(self.n+i[1]-1,self.n-i[0]))
+                c.add(self.add_negates_for_check(self.ancillas,i[1]))
+                c.add(gates.X(self.n-i[0]).controlled_by(*self.ancillas))
+                c.add(self.add_negates_for_check(self.ancillas,i[1]))
             else:
                 if i[0]!=self.n:
-                    c.add(gates.CRY(self.n+i[1]-1,self.n-i[0],float(2*np.arccos(np.sqrt(i[2][0])))))
+                    c.add(self.add_negates_for_check(self.ancillas,i[1]))
+                    c.add(gates.RY(self.n-i[0],float(2*np.arccos(np.sqrt(i[2][0])))).controlled_by(*self.ancillas))
+                    c.add(self.add_negates_for_check(self.ancillas,i[1]))
                 else:
                     c.add(gates.RY(0,float(2*np.arccos(np.sqrt(i[2][0])))))
-            if i[1]!=1:
-                c.add(gates.SWAP(self.n-1+i[1],self.n-1+i[1]-1).controlled_by(self.n-i[0]))
-            else:
-                c.add(gates.CNOT(self.n-i[0],self.n))
+        c.add(self.sub_one(self.ancillas, [self.n-1]))
         return c
     
     
@@ -143,7 +196,7 @@ class isd_quantum:
         '''Checks that the superposition has been created correctly.
         
         '''
-        c = Circuit(self.n+self.r)
+        c = Circuit(self.n+self.n_anc)
         c += self.superposition_circuit()
         c.add(gates.M(*range(self.n)))
         result=c(nshots=nshots)
@@ -155,6 +208,14 @@ class isd_quantum:
             print('-'*37)
         print('\n')
     
+              
+    def swap_rows(self,i,j,controls):
+        '''Swaps needed to handle the first r columns
+        
+        '''
+        for col in range(self.n-self.r+1):
+            yield gates.SWAP(self.H[i,col],self.H[j,col]).controlled_by(*controls)
+              
     
     def set_ancillas_to_num(self, ancillas, num):
         '''Set a quantum register to a specific number.
@@ -220,7 +281,7 @@ class isd_quantum:
         '''Matrix row addition in quantum registers.
         
         '''
-        for i in range(col+1,self.n+1):
+        for i in range(col+1,self.n-self.r+1):
             controls.append(self.H[row_addend,i])
             yield gates.X(self.H[row_res,i]).controlled_by(*controls)
             controls.pop()
@@ -259,22 +320,22 @@ class isd_quantum:
         #for each row above the current diagonal entry (identiy)
         for l in range(i):
             #eliminate ones by adding row[i] to that row
-            yield gates.X(self.H[l,self.n]).controlled_by(*([self.H[l,p],self.H[i,self.n]]+controls))
+            yield gates.X(self.H[l,self.n-self.r]).controlled_by(*([self.H[l,p],self.H[i,self.n-self.r]]+controls))
             
     
     def initialize_matrix(self):
         '''Initialize the quantum circuit with the chosen matrix.
         
         '''
-        c = Circuit((self.n+1)*self.r)
-        q_reg = np.arange((self.n+1)*self.r).reshape(self.n+1, self.r).transpose()
+        c = Circuit((self.n-self.r+1)*self.r)
+        q_reg = np.arange((self.n-self.r+1)*self.r).reshape(self.n-self.r+1, self.r).transpose()
         for i in range(self.r):
-            for j in range(self.n):
-                if self.A[i, j] == 1:
+            for j in range(self.n-self.r):
+                if self.A[i, j+self.r] == 1:
                     c.add(gates.X(q_reg[i, j]))
         for i in range(self.r):
             if self.b[i] == 1:
-                c.add(gates.X(q_reg[i, self.n]))
+                c.add(gates.X(q_reg[i, self.n-self.r]))
         return c
     
     
@@ -282,15 +343,18 @@ class isd_quantum:
         '''Solve a linear system using a quantum computer.
         
         '''
-        c = Circuit(self.n+self.r+(self.n+1)*self.r)
+        c = Circuit(self.n+self.n_anc+(self.n-self.r+1)*self.r)
         #add pivots and create upper triangular matrix
         for j in range(self.r-1):
             c.add(self.set_ancillas_to_num(self.ancillas,self.r))
             for i in range(self.n):
-                if j<=i:
+                if j<i:
                     c.add(self.add_negates_for_check(self.ancillas,self.r-j))
-                    c.add(self.add_pivot(j,i,self.ancillas+[self.perm[i]]))
-                    c.add(self.lower_col_elimination(j,i,self.ancillas+[self.perm[i]]))
+                    if i<self.r:
+                        c.add(self.swap_rows(i,j,self.ancillas+[self.perm[i]]))
+                    else:
+                        c.add(self.add_pivot(j,i-self.r,self.ancillas+[self.perm[i]]))
+                        c.add(self.lower_col_elimination(j,i-self.r,self.ancillas+[self.perm[i]]))   
                     c.add(self.add_negates_for_check(self.ancillas,self.r-j))
                 c.add(self.sub_one(self.ancillas,[self.perm[i]]))
                 
@@ -298,9 +362,9 @@ class isd_quantum:
         for j in range(self.r-1):
             c.add(self.set_ancillas_to_num(self.ancillas,self.r))
             for i in reversed(range(self.n)):
-                if self.r-j-1<=i:
+                if self.r-j-1<=i and i>=self.r:
                     c.add(self.add_negates_for_check(self.ancillas,self.r-j))
-                    c.add(self.upper_col_elimination(self.r-j-1,i,self.ancillas+[self.perm[i]]))
+                    c.add(self.upper_col_elimination(self.r-j-1,i-self.r,self.ancillas+[self.perm[i]]))
                     c.add(self.add_negates_for_check(self.ancillas,self.r-j))
                 c.add(self.sub_one(self.ancillas,[self.perm[i]]))
         return c
@@ -310,9 +374,9 @@ class isd_quantum:
         '''Calculate the weight of the error syndrome on an ancilla register.
         
         '''
-        c = Circuit(self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1))))
+        c = Circuit(self.n+self.n_anc+(self.n-self.r+1)*self.r)
         for i in range(self.r):
-            c.add(self.add_one(self.ancillas2[::-1],[self.H[i][self.n]]))
+            c.add(self.add_one(self.ancillas[::-1],[self.H[i][self.n-self.r]]))
         return c
     
     
@@ -320,8 +384,8 @@ class isd_quantum:
         '''Combination of solving the system and adding the syndrome weight.
         
         '''
-        c = Circuit(self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1))))
-        c.add(self.solve_system().on_qubits(*range(self.n+self.r+(self.n+1)*self.r)))
+        c = Circuit(self.n+self.n_anc+(self.n-self.r+1)*self.r)
+        c += self.solve_system()
         c += self.syndrome_weight()
         return c
     
@@ -330,17 +394,17 @@ class isd_quantum:
         '''Check that the isd method for a quantum computer acts as expected.
         
         '''
-        c = Circuit(self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1))))
-        c.add(self.superposition_circuit().on_qubits(*range(self.n+self.r)))
+        c = Circuit(self.n+self.n_anc+(self.n-self.r+1)*self.r)
+        c.add(self.superposition_circuit().on_qubits(*range(self.n+self.n_anc)))
         c.add(self.initialize_matrix().on_qubits(*self.H.transpose().flatten()))
         c += self.find_syndrome()
-        c.add(gates.M(*(self.perm+[self.H[i,self.n] for i in range(self.r)]+self.ancillas2)))
+        c.add(gates.M(*(self.perm+[self.H[i,self.n-self.r] for i in range(self.r)]+self.ancillas)))
         result=c(nshots=nshots)
         print('-'*73)
         print('| Column choices  | Syndrome        | Syndrome weight | Probability     |')
         print('-'*73)
         for i in result.frequencies():
-            print('|',i[:self.n],' '*(14-self.n),'|',i[self.n:self.n+self.r],' '*(14-self.r),'|',i[self.n+self.r:],' '*(14-int(np.ceil(np.log2(self.r+1)))),'|',result.frequencies()[i]/nshots,' '*(14-len(str(result.frequencies()[i]/nshots))),'|')
+            print('|',i[:self.n],' '*(14-self.n),'|',i[self.n:self.n+self.r],' '*(14-self.r),'|',i[self.n+self.r:],' '*(14-self.n_anc),'|',result.frequencies()[i]/nshots,' '*(14-len(str(result.frequencies()[i]/nshots))),'|')
             print('-'*73)
         print('\n')
         
@@ -349,13 +413,13 @@ class isd_quantum:
         '''Create the ISD oracle suitable for Grover's algorithm.
         
         '''
-        c = Circuit(self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1)))+1)
+        c = Circuit(self.n+self.n_anc+(self.n-self.r+1)*self.r+1)
         c.add(self.initialize_matrix().on_qubits(*self.H.transpose().flatten()))
-        c.add(self.find_syndrome().on_qubits(*range(self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1))))))
-        c.add(self.add_negates_for_check(self.ancillas2,target))
-        c.add(gates.X(c.nqubits-1).controlled_by(*self.ancillas2))
-        c.add(self.add_negates_for_check(self.ancillas2,target))
-        c.add(self.find_syndrome().invert().on_qubits(*range(self.n+self.r+(self.n+1)*self.r+int(np.ceil(np.log2(self.r+1))))))
+        c.add(self.find_syndrome().on_qubits(*range(self.n+self.n_anc+(self.n-self.r+1)*self.r)))
+        c.add(self.add_negates_for_check(self.ancillas[::-1],target))
+        c.add(gates.X(c.nqubits-1).controlled_by(*self.ancillas))
+        c.add(self.add_negates_for_check(self.ancillas[::-1],target))
+        c.add(self.find_syndrome().invert().on_qubits(*range(self.n+self.n_anc+(self.n-self.r+1)*self.r)))
         c.add(self.initialize_matrix().invert().on_qubits(*self.H.transpose().flatten()))
         return c
     
@@ -364,13 +428,33 @@ class isd_quantum:
         '''Check if a given permutation outputs the desired target weight.
         
         '''
+        def solve_gf2(A,t):
+            r=A.shape[0]
+            b=np.copy(t)
+            for i in range(r):    
+                for j in range(i+1,r):
+                    if A[j,i]==1:
+                        if A[i,i]!=1:
+                            A[i]^=A[j]
+                            b[i]^=b[j]
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+                if A[i,i]!=1:
+                    return False
+            for i in reversed(range(r)):
+                for j in range(i):
+                    if A[j,i]==1:
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+            return b
+        
         P=np.matrix(A).transpose()
         L=[]
         for i in range(self.n):
             if perm[i]=="1":
                 L.append(P[i].tolist()[0])
         Hp=np.matrix(L).transpose()
-        x=np.linalg.solve(Hp,b)%2
+        x=solve_gf2(Hp,b)%2
         return np.int(np.sum(x))==target
         
         
@@ -460,6 +544,11 @@ class grover:
     def grover(self, iterations, nshots = 1000):
         '''Perform Grover's algorithm with a set amount of iterations.
         
+        Args:
+            iterations (int): number of times to repeat the Grover step.
+            
+            nshots (int): number of shots in order to get the frequencies.
+        
         '''
         c = Circuit(self.oracle.nqubits)
         c += self.initialize()
@@ -494,7 +583,10 @@ class grover:
         
     def execute(self, freq=False):
         '''Execute Grover's algorithm. If the number of solutions is given, calculates iterations, 
-        if not uses an iterative approach.
+        if not, uses an iterative approach.
+        
+        Args:
+            freq (Bool): print the full frequencies after the exact Grover algorithm.
         
         '''
         if self.num_sol:
@@ -514,7 +606,7 @@ class grover:
                         print('Not a solution of the problem. Something went wrong.\n')
         else:
             if not self.check:
-                raise ValueError('Check function needed for iterative approach!\n')
+                raise ValueError('Check function needed for iterative approach.\n')
             measured = self.iterative()
             print('Solution found in an iterative process.\n')
             print(f'Solution: {measured}\n')
