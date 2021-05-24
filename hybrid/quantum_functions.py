@@ -440,7 +440,7 @@ def quantumISD(H, s, target):
     check = qISD.check_solution
     check_args = (H, s, target)
     isd_grover = Grover(oracle, superposition_circuit=superposition, superposition_qubits=n,
-                        superposition_size=sup_size, check=check, check_args=check_args, iterative=iterative)
+                        superposition_size=sup_size, check=check, check_args=check_args, iterative=True)
     solution, iterations = isd_grover()
     return solution, iterations
     
