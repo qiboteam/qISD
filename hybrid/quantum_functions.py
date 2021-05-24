@@ -431,10 +431,12 @@ def quantumISD(H, s, target):
         iterations (int): number of total calls to the oracle until a solution is found.
         
     '''
+    n = H.shape[1]
+    k = H.shape[0]
     qISD = isd_quantum(H, s)
     oracle = qISD.isd_oracle(target)
     superposition = qISD.superposition_circuit()
-    sup_size = int(binomial(H.shape[1], H.shape[0]))
+    sup_size = int(binomial(n, k))
     check = qISD.check_solution
     check_args = (H, s, target)
     isd_grover = Grover(oracle, superposition_circuit=superposition, superposition_qubits=n,
