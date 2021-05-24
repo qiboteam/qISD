@@ -434,7 +434,7 @@ def quantumISD(H, s, target):
     qISD = isd_quantum(H, s)
     oracle = qISD.isd_oracle(target)
     superposition = qISD.superposition_circuit()
-    sup_size = int(binomial(n, k))
+    sup_size = int(binomial(H.shape[1], H.shape[0]))
     check = qISD.check_solution
     check_args = (H, s, target)
     isd_grover = Grover(oracle, superposition_circuit=superposition, superposition_qubits=n,
