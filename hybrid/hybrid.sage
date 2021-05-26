@@ -472,7 +472,28 @@ def hybrid_coprocessor(H,s,w,alpha,beta,p):
                 solution=P*vector(GF(2),e_quant[:n-k-beta].list()+e_beta.list()+e_quant[n-k-beta:].list()+[0]*alpha)
                 if H*solution==s:
                     return solution
-            
+
+
+def main(n, k, w, a, b, p):
+    H=random_matrix(GF(2),n-k,n)
+    e=zero_vector(GF(2),n)
+    n_range=[i for i in range(n)]
+    shuffle(n_range)
+    for i in range(w):
+        e[n_range[i]]=1
+    s=H*e
+    print("Parity Check Marix:\n")
+    print(H)
+    print()
+    print("Syndrome:\n")
+    print(s)
+
+    print()
+    e=hybrid_coprocessor(H,s,w,a,b,p)
+    print("Solution:\n")
+    print(e)
+    print()
+    return e
             
 parser = argparse.ArgumentParser()
 parser.add_argument("--n", default=10, type=int, help="code length (number of columns of the parity check matrix)")
@@ -483,29 +504,5 @@ parser.add_argument("--beta", default=3, type=int, help="optimization parameter 
 parser.add_argument("--p", default=1, type=int, help="optimization parameter of reduced redundancy (weight on omitted part)")
 args = vars(parser.parse_args())
 
-#construct test instance
-n=args.n
-k=args.k
-w=args.w
-a=args.alpha
-b=args.beta
-p=args.p
+main(**args)
 
-H=random_matrix(GF(2),n-k,n)
-e=zero_vector(GF(2),n)
-n_range=[i for i in range(n)]
-shuffle(n_range)
-for i in range(w):
-    e[n_range[i]]=1
-s=H*e
-print("Parity Check Marix:\n")
-print(H)
-print()
-print("Syndrome:\n")
-print(s)
-
-print()
-e=hybrid_coprocessor(H,s,w,a,b,p)
-print("Solution:\n")
-print(e)
-print()
