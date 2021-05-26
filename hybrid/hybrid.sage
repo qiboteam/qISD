@@ -474,7 +474,9 @@ def hybrid_coprocessor(H,s,w,alpha,beta,p):
                     return solution
 
 
-def main(n, k, w, a, b, p):
+def main(n, k, w, alpha, beta, p):
+    a = alpha
+    b = beta
     H=random_matrix(GF(2),n-k,n)
     e=zero_vector(GF(2),n)
     n_range=[i for i in range(n)]
