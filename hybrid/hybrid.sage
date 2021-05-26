@@ -484,7 +484,7 @@ parser.add_argument("--p", default=1, type=int, help="optimization parameter of 
 args = vars(parser.parse_args())
 
 #construct test instance
-n, k, w, a, b, p = **args
+(n, k, w, a, b, p) = (**args)
 #k=int(args.k)
 #w=int(args.w)
 #a=int(args.alpha)
