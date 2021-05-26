@@ -432,7 +432,7 @@ def get_error_from_quantum_output(H,s_prime,perm):
     return e_quant
     
     
-def hybrid_coprocessor(H,s,w,alpha,beta,p):
+def hybrid_coprocessor(H,s,n,k,w,alpha,beta,p):
     '''Solves the Syndrome Decoding Problem defined on (H,s,w)
     Args:
         H (matrix(GF(2),n-k,n): parity check matrix, prepared for the problem.
@@ -491,7 +491,7 @@ def main(n, k, w, alpha, beta, p):
     print(s)
 
     print()
-    e=hybrid_coprocessor(H,s,w,a,b,p)
+    e=hybrid_coprocessor(H,s,n,k,w,a,b,p)
     print("Solution:\n")
     print(e)
     print()
