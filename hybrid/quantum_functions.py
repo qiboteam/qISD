@@ -19,35 +19,6 @@ class isd_quantum:
             s (np.array): syndrome.
             
         '''
-        def solve_gf2(A, t):
-            '''Solve a linear system of equations in the F2 field.
-            Args:
-                A (np.array): Matrix to solve.
-                t (np.array): target vector.
-            
-            Returns:
-                b (np.array): solution of the linear system.
-            
-            '''
-            r = A.shape[0]
-            b = np.copy(t)
-            for i in range(r):
-                for j in range(i+1, r):
-                    if A[j, i] == 1:
-                        if A[i, i] != 1:
-                            A[i] ^= A[j]
-                            b[i] ^= b[j]
-                        A[j] ^= A[i]
-                        b[j] ^= b[i]
-                if A[i, i] != 1:
-                    raise ValueError("not invertible")
-            for i in reversed(range(r)):
-                for j in range(i):
-                    if A[j, i] == 1:
-                        A[j] ^= A[i]
-                        b[j] ^= b[i]
-            return b
-        
         self.H = H
         self.s = s
         self.n = H.shape[1]
@@ -443,18 +414,4 @@ def quantumISD(H, s, target):
                         superposition_size=sup_size, check=check, check_args=check_args, iterative=True)
     solution, iterations = isd_grover()
     return solution, iterations
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
