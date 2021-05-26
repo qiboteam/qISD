@@ -484,12 +484,12 @@ parser.add_argument("--p", default=1, type=int, help="optimization parameter of 
 args = vars(parser.parse_args())
 
 #construct test instance
-(n, k, w, a, b, p) = (**args)
-#k=int(args.k)
-#w=int(args.w)
-#a=int(args.alpha)
-#b=int(args.beta)
-#p=int(args.p)
+n=args.n
+k=args.k
+w=args.w
+a=args.alpha
+b=args.beta
+p=args.p
 
 H=random_matrix(GF(2),n-k,n)
 e=zero_vector(GF(2),n)
