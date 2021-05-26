@@ -390,7 +390,8 @@ def quantumISD(H, s, target):
     check_args = (H, s, target)
     isd_grover = Grover(oracle, superposition_circuit=superposition, superposition_qubits=n,
                         superposition_size=sup_size, check=check, check_args=check_args, iterative=True)
-    
+    if isd_grover.nqubits > 25:
+        raise ValueError('Trying to use more quantum resources than available, 25 qubits max.')
     solution, iterations = isd_grover()
     return solution, iterations
     
@@ -437,6 +438,7 @@ def hybrid_coprocessor(H,s,n,k,w,alpha,beta,p):
     Args:
         H (matrix(GF(2),n-k,n): parity check matrix, prepared for the problem.
         s (vector(GF(2),n-k)  : syndrome
+        n, k (ints)           : code length, code dimension
         w (int)               : error weight
         alpha, beta, p (ints) : optimization parameters
         
@@ -475,6 +477,15 @@ def hybrid_coprocessor(H,s,n,k,w,alpha,beta,p):
 
 
 def main(n, k, w, alpha, beta, p):
+    '''Main program that solves the Syndrome Decoding Problem defined on (H(n-k,n),s,w)
+    Args:
+        n, k (ints)           : code length, code dimension
+        w (int)               : error weight
+        alpha, beta, p (ints) : optimization parameters
+        
+    Returns:
+        solution (vector(GF(2),n)): vector satisfying H*solution=s of weight w
+    '''
     a = alpha
     b = beta
     H=random_matrix(GF(2),n-k,n)
