@@ -618,16 +618,8 @@ class isd_quantum:
             *self.Hq.transpose().flatten()))
         return c
 
-    def check_solution(self, perm, A, b, target, lee_brickell=0):
+    def check_solution(self, perm, A, b, target,lee_brickell=0):
         '''Check if a given permutation outputs the desired target weight.
-        Args:
-            perm (list): choice of columns to check.
-            H (np.array): parity check matrix.
-            s (np.array): original syndrome.
-            target (int): target weight of the syndrome by the end.
-
-        Returns:
-            (bool): True if the weight of the resulting syndrome is equal to the target.
 
         '''
         def find_set_bits(x, n):
@@ -637,7 +629,7 @@ class isd_quantum:
                 if mask & x:
                     bits.append(i)
             return bits
-
+        
         def solve_gf2(A,t):
             r=A.shape[0]
             b=np.copy(t)
@@ -658,53 +650,59 @@ class isd_quantum:
                         b[j]^=b[i]
             return b
 
-        n = A.shape[1]
-        k = A.shape[0]
-
         P=np.matrix(A).transpose()
         L=[]
-        #if lee_brickell:
-        #    range_n=[i for i in reversed(range(n))]
-        #else:
-        #    range_n=[i for i in reversed(range(n-k))]+[i for i in range(k)]
-        #for i in range_n:
-        #    if perm[i]=="1":
-        #        L.append(P[i].tolist()[0])
+        n = A.shape[1]
+        k = A.shape[0]
         for i in range(n):
-            if perm[i] == "1":
+            if perm[i]=="1":
                 L.append(P[i].tolist()[0])
+        
         
         if not(lee_brickell):
             Hp=np.matrix(L).transpose()
             x=solve_gf2(Hp,b)%2
             return np.int(np.sum(x))==target
+
         else:
+            #to systematic form
             for i in range(n):
                 if perm[i]=="0":
                     L.append(P[i].tolist()[0])
             Hp=np.matrix(L).transpose()
-            x=solve_gf2(Hp,b)%2
+            x=solve_gf2(Hp,b)
+            
+            #if system not invertible
             try:
                 len(x)
             except:
                 return False
+            
             p=lee_brickell
-            correct=False
-        
-            length=n-k
             setb = (1 << p) - 1;
-            limit = (1 << length);
+            limit = (1 << (n-k));
             while setb < limit:
-                res=[i for i in x]
-                #get positions of set bits in setb
-                
-                columns_to_add=find_set_bits(setb,k)
+                res=[int(i) for i in x]
+                columns_to_add=find_set_bits(setb,n-k)
                 
                 #add those columns to syndrome, note that indices need to be shifted by k
                 for i in columns_to_add:
                     for j in range(len(res)):
                         res[j]^=Hp[j,k+i]
+                
                 if np.int(np.sum(res))==target-p:
+                    #reconstruct solution (reverse permutation)
+                    z=[0 for _ in range(n)]
+                    c1=c0=0
+                    for i in range(n):
+                        if perm[i]=="1":
+                            z[i]=int(res[c1])
+                            c1+=1
+                        else:
+                            if c0 in columns_to_add:
+                                z[i]=1
+                            c0+=1
+                    print(f'Correct column choice found: {z}')
                     return True
                     
                 #gives next binary number with p bits out of k set to one
