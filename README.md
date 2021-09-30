@@ -13,7 +13,7 @@ The code has been limited to a maximum of 25 qubits in order for them to be run 
 
 - `main.py`: solving an instance of a linear code using quantum Information Set Decoding using quantum simultion software.
 
-- `hybrid.sage`: using a hybrid classical-quantum approach to solve large instances with limited quantum resources.
+- `hybrid.sage`: using a hybrid classical-quantum approach to solve instances with limited quantum resources.
 
 #### How to run the code:
 
@@ -26,7 +26,7 @@ The code has been limited to a maximum of 25 qubits in order for them to be run 
 - `--target` *(int)* : target weight for the solution.
 - `--num_sol` *(int)* : number of solutions of the instance. Leave blank if not known.
 - `--execute` : flag to execute the simulation of the quantum circuit.
-- `--iterative` : flag to force the use of the iterative method even when the number of solutions is not known.
+- `--iterative` : flag to force the use of the iterative method even when the number of solutions is known.
 - `--verbose` : flag to output superposition and oracle sanity checks.
 - `--circuit` : flag to output a `.qasm` file with the gates required to solve the quantum ISD instance.
 - `--it` *(int)* : number of amplitude amplification iterations for the circuit printed.
@@ -40,5 +40,5 @@ The code has been limited to a maximum of 25 qubits in order for them to be run 
 - `--k` *(int)* : code dimension, parity check matrix consists of n-k rows.
 - `--w` *(int)* : error weight of the syndrome decoding instance.
 - `--alpha` *(int)* : optimization parameter of hybrid prange, zeros to be guessed.
-- `--beta` *(int)* : optimization parameter of reduced redundancy, omitted rows.
-- `--p` *(int)* : optimization parameter of reduced redundancy, weight on omitted part.
+- `--beta` *(int)* : optimization parameter of punctured hybrid, omitted rows.
+- `--p` *(int)* : optimization parameter of punctured hybrid, weight on omitted part.
