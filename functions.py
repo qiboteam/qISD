@@ -11,7 +11,7 @@ class lin_sys:
 
     '''
 
-    def __init__(self, n, k, sol, weight):
+    def __init__(self, n, k, lee_brickell=0):
         '''Set the dimension of the system and how many solutions to check for.
         Args:
             n (int): dimension of the parity check matrix.
@@ -22,27 +22,24 @@ class lin_sys:
         '''
         self.n = n
         self.k = k
-        self.sol = sol
-        self.weight = weight
-        self.H, self.s, self.solutions = self.generate_instance()
+        self.H, self.s, self.solutions = self.instance_generation(lee_brickell)
 
-    def generate_instance(self):
-        '''Generates random instance with initialized parameters.
-        Returns:
-            H (np.array): parity check matrix.
-            s (np.array): syndrome.
-            solutions (list): solutions that contain the column choice and the corresponding syndrome.
 
-        '''
+    def instance_generation(self, lee_brickell):
+
+        def Reverse(tuples):
+            new_tup = tuples[::-1]
+            return new_tup
+
         def solve_gf2(A, t):
             '''Solve a linear system of equations in the F2 field.
             Args:
                 A (np.array): Matrix to solve.
                 t (np.array): target vector.
-            
+
             Returns:
                 b (np.array): solution of the linear system.
-            
+
             '''
             r = A.shape[0]
             b = np.copy(t)
@@ -63,46 +60,58 @@ class lin_sys:
                         b[j] ^= b[i]
             return b
 
-        n_range=[i for i in range(self.n)]
-        solutions = []
-        while(len(solutions) < self.sol):
-            solutions = []
-            H = np.random.randint(2, size=(self.k, self.n))
-            shuffle(n_range)
-            s = np.copy((H.transpose()[n_range[0]]))
-            for i in range(1,self.weight):
-                s^=H.transpose()[n_range[i]]
-            if all(s[i] == 0 for i in range(self.k)):
-                continue
-            comb = itertools.combinations([i for i in range(self.n)], self.k)
-            Hprime = np.arange(self.k*self.k).reshape(self.k, self.k)
-            first = 1
-            for i in comb:
-                ind = 0
-                for j in i:
-                    for l in range(self.k):
-                        Hprime[l, ind] = H[l, j]
-                    ind += 1
-                mask = 0
-                for j in i:
-                    mask ^= (1 << (self.n-j-1))
-                v = bin(mask)[2:]
-                while (len(v) < self.n):
-                    v = "0"+v
-                try:
-                    solu = solve_gf2(Hprime, s)
-                    for it in reversed(solu):
-                        if it == 0:
-                            v = "0"+v
+        n = self.n
+        r = self.k
+        solutions=[]
+        while(len(solutions)<2):
+            solutions=[]
+            A=np.random.randint(2, size=(r, n))
+            if lee_brickell == 0:
+                for i in range(r):
+                    for j in range(r):
+                        if i==j:
+                            A[j,n-r+i]=1
                         else:
-                            v = "1"+v
+                            A[j,n-r+i]=0
+            while True:
+                b=np.random.randint(2, size=(r,1))
+                if not(all(b==0)):
+                    break
+            comb=itertools.combinations([i for i in range(n)],r)
+            Aprime=np.arange(r*r).reshape(r,r)
+            for i in comb:
+                ind=0
+                c=0
+                for t in i:
+                    if t>=n-r:
+                        break
+                    c+=1
+                if lee_brickell == 0:
+                    new_i=Reverse(i[:c])+i[c:]
+                else:
+                    new_i=Reverse(i)
+                for j in new_i:
+                    for l in range(r):
+                        Aprime[l,ind]=A[l,j]
+                    ind+=1
+                mask=0
+                for j in i:
+                    mask^=(1<<(n-j-1))
+                v=bin(mask)[2:]
+                while (len(v)<n):
+                    v="0"+v
+                try:
+                    sol=solve_gf2(Aprime,b)
+                    for it in reversed(sol):
+                        if it==0:
+                            v="0"+v
+                        else:
+                            v="1"+v
                     solutions.append(v)
                 except:
                     pass
-                if len(solutions) == 0 and first == 1:
-                    break
-                first = 0
-        return H, s, solutions
+
+        return A,b,solutions
 
     def print_instance(self):
         '''Prints the specifications of the instance.
@@ -121,56 +130,33 @@ class lin_sys:
 
 
 class isd_quantum:
-    '''Constructs quantum primitives needed to solve a linear system using ISD.
+    '''Constructs quantum primitives needed to solve a linear system using ISD
+    and Lee-Brickell.
 
     '''
 
-    def __init__(self, H, s):
+    def __init__(self, H, s, lee_brickell=0):
         '''Sets the specifications for the linear system to solve.
         Args:
-            n (int): dimension of the parity check matrix.
-            k (int): dimension of the syndrome.
             H (np.array): parity check matrix.
             s (np.array): syndrome.
-            
+            lee_brickell (int): weight allowed to be off the column choice.
+
         '''
-        def solve_gf2(A, t):
-            '''Solve a linear system of equations in the F2 field.
-            Args:
-                A (np.array): Matrix to solve.
-                t (np.array): target vector.
-            
-            Returns:
-                b (np.array): solution of the linear system.
-            
-            '''
-            r = A.shape[0]
-            b = np.copy(t)
-            for i in range(r):
-                for j in range(i+1, r):
-                    if A[j, i] == 1:
-                        if A[i, i] != 1:
-                            A[i] ^= A[j]
-                            b[i] ^= b[j]
-                        A[j] ^= A[i]
-                        b[j] ^= b[i]
-                if A[i, i] != 1:
-                    raise ValueError("not invertible")
-            for i in reversed(range(r)):
-                for j in range(i):
-                    if A[j, i] == 1:
-                        A[j] ^= A[i]
-                        b[j] ^= b[i]
-            return b
-        
-        s = solve_gf2(H, s)
         self.H = H
         self.s = s
         self.n = H.shape[1]
         self.k = H.shape[0]
         self.L = self.superposition_probabilities()
         self.n_anc = int(np.ceil(np.log2(self.k+1)))
+        if lee_brickell == 0:
+            self.lb = 1
+        else:
+            self.lb = 0
         self.setup_q_registers()
+        self.nq = self.n+self.n_anc + \
+            (self.n-self.lb*self.k+1)*self.k + \
+            (1-self.lb)*self.n_anc+self.lb*(self.n-self.k)
 
     def setup_q_registers(self):
         '''Initializes the necessary quantum registers for the instance quantum registers.
@@ -178,8 +164,12 @@ class isd_quantum:
         '''
         self.perm = [i for i in range(self.n)]
         self.ancillas = [i for i in range(self.n, self.n+self.n_anc)]
-        self.Hq = np.arange(self.n+self.n_anc, self.n+self.n_anc+(self.n-self.k+1)
-                           * self.k).reshape(self.n-self.k+1, self.k).transpose()
+        self.Hq = np.arange(self.n+self.n_anc, self.n+self.n_anc+(self.n-self.lb*self.k+1)
+                            * self.k).reshape(self.n-self.lb*self.k+1, self.k).transpose()
+        self.counter = [i for i in range(self.n+self.n_anc+(self.n-self.lb*self.k+1)*self.k,
+                                         self.n+self.n_anc+(self.n-self.lb*self.k+1)*self.k+(1-self.lb)*self.n_anc)]
+        self.aux = [i for i in range(self.n+self.n_anc+(self.n-self.lb*self.k+1)*self.k+(1-self.lb)*self.n_anc,
+                                     self.n+self.n_anc+(self.n-self.lb*self.k+1)*self.k+(1-self.lb)*self.n_anc+self.lb*(self.n-self.k))]
 
     def superposition_probabilities(self):
         '''Computes the probabilities to set the initial superposition.
@@ -192,7 +182,7 @@ class isd_quantum:
             Args:
                 n (int): number of sites to fill.
                 k (int): number of filled sites.
-                
+
             Returns:
                 L (list): position and set values with the corresponding target probability.
 
@@ -269,7 +259,7 @@ class isd_quantum:
             controls (list): the qubits this operation is controlled by.
 
         '''
-        for col in range(self.n-self.k+1):
+        for col in range(self.n-self.lb*self.k+1):
             yield gates.SWAP(self.Hq[i, col], self.Hq[j, col]).controlled_by(*controls)
 
     def set_ancillas_to_num(self, ancillas, num):
@@ -293,7 +283,10 @@ class isd_quantum:
 
         '''
         ind = 0
+        #print('len(a)',len(ancillas))
+        #print('num', bin(num)[2:])
         for i in reversed(bin(num)[2:]):
+            #print('ind', ind)
             if int(i) == 0:
                 yield gates.X(ancillas[ind])
             ind += 1
@@ -316,7 +309,7 @@ class isd_quantum:
     def add_one(self, ancillas, controls):
         '''Add one bit by bit. Operation controlled by a qubit register.
         Args:
-            ancillas (list): quantum register where 1 is substracted.
+            ancillas (list): quantum register where 1 is added.
             controls (list): quantum register that controls the operation.
 
         '''
@@ -336,7 +329,7 @@ class isd_quantum:
             controls (list): quantum register that controls the operation.
 
         '''
-        for i in range(col+1, self.n-self.k+1):
+        for i in range(col+1, self.n-self.lb*self.k+1):
             controls.append(self.Hq[row_addend, i])
             yield gates.X(self.Hq[row_res, i]).controlled_by(*controls)
             controls.pop()
@@ -345,10 +338,10 @@ class isd_quantum:
         '''Set the pivot for the following quantum gaussian elimination algorithm. Operation 
            controlled by a qubit register.
         Args:
-            identity (int):
-            parity (int):
+            identity (int): index of the processed column according to the selected subset.
+            parity (int): index of the processed column according to the parity check matrix.
             controls (list): quantum register that controls the operation.
-        
+
         '''
         i = identity
         p = parity
@@ -370,10 +363,10 @@ class isd_quantum:
         '''Clear the lower part of the matrix in order to recover the row echelon form. Operation 
            controlled by a qubit register.
         Args:
-            identity (int):
-            parity (int):
+            identity (int): index of the processed column according to the selected subset.
+            parity (int): index of the processed column according to the parity check matrix.
             controls (list): quantum register that controls the operation.
-        
+
         '''
         i = identity
         p = parity
@@ -386,17 +379,20 @@ class isd_quantum:
         '''Used in back substitution in order to find the solution of the system. Operation 
            controlled by a qubit register.
         Args:
-            identity (int):
-            parity (int):
+            identity (int): index of the processed column according to the selected subset.
+            parity (int): index of the processed column according to the parity check matrix.
             controls (list): quantum register that controls the operation.
-        
+
         '''
         i = identity
         p = parity
         # for each row above the current diagonal entry (identiy)
         for l in range(i):
             # eliminate ones by adding row[i] to that row
-            yield gates.X(self.Hq[l, self.n-self.k]).controlled_by(*([self.Hq[l, p], self.Hq[i, self.n-self.k]]+controls))
+            if self.lb:
+                yield gates.X(self.Hq[l, self.n-self.lb*self.k]).controlled_by(*([self.Hq[l, p], self.Hq[i, self.n-self.lb*self.k]]+controls))
+            else:
+                yield self.row_add(self.k-1, l, i, [self.Hq[l, p]]+controls)
 
     def initialize_matrix(self):
         '''Initialize the quantum circuit with the chosen matrix.
@@ -405,53 +401,117 @@ class isd_quantum:
                                      parity check matrix to the quantum register.
 
         '''
-        c = Circuit((self.n-self.k+1)*self.k)
-        q_reg = np.arange((self.n-self.k+1) *
-                          self.k).reshape(self.n-self.k+1, self.k).transpose()
+        c = Circuit((self.n-self.lb*self.k+1)*self.k)
+        q_reg = np.arange((self.n-self.lb*self.k+1) *
+                          self.k).reshape(self.n-self.lb*self.k+1, self.k).transpose()
         for i in range(self.k):
-            for j in range(self.n-self.k):
-                if self.H[i, j+self.k] == 1:
+            for j in range(self.n-self.lb*self.k):
+                if self.H[i, j] == 1:
                     c.add(gates.X(q_reg[i, j]))
         for i in range(self.k):
             if self.s[i] == 1:
-                c.add(gates.X(q_reg[i, self.n-self.k]))
+                c.add(gates.X(q_reg[i, self.n-self.lb*self.k]))
         return c
 
-    def solve_system(self):
-        '''Solve a linear system using a quantum computer.
+    def swap_cols(self, i, j, controls):
+        '''Swap two columns of the  H matrix controlled by a quantum register.
+        Args:
+            i, j (int): columns to swap.
+            controls (list): quantum register that controls the operation.
+
+        '''
+        for row in range(self.k):
+            yield gates.SWAP(self.Hq[row, i], self.Hq[row, j]).controlled_by(*controls)
+
+    def swap_to_front(self, i, controls):
+        '''Swap a column of the H matrix to the leftmost part of the matrix controlled
+        by a quantum register.
+        Args:
+            i (int): column to swap to the front.
+            controls (list): quantum register that controls the operation.
+
+        '''
+        for col in reversed(range(i)):
+            yield self.swap_cols(col+1, col, controls)
+
+    def swap_bit_to_front(self, i, register, controls):
+        '''Swap a qubit to the front of a linear quantum register controlled by another
+        quantum register.
+        Args:
+            i (int): qubit to swap to the front.
+            register (list): quantum register where the swaps are applied.
+            controls (list): quantum register that controls the operation.
+
+        '''
+        for col in reversed(range(i)):
+            yield gates.SWAP(register[col+1], register[col]).controlled_by(*controls)
+
+    def col_add(self, col_res, col_addend, controls):
+        '''Column addition for the lee_brickell method controlled by a quantum register.
+        Args:
+            col_res (int): column where the result of the addition is stored.
+            col_addend (int): column to add to col_res.
+            controls (list): quantum register that controls the operation.
+
+        '''
+        for i in range(self.k):
+            controls.append(self.Hq[i, col_addend])
+            yield gates.X(self.Hq[i, col_res]).controlled_by(*controls)
+            controls.pop()
+
+    def solve_system_lb(self):
+        '''Solve a linear system using a quantum computer for the lee_brickell method.
         Returns:
             c (qibo.models.Circuit): quantum circuit that implements quantum Gaussian elimination
                                      in order to solve a linear system.
 
         '''
-        c = Circuit(self.n+self.n_anc+(self.n-self.k+1)*self.k)
-        # add pivots and create upper triangular matrix
-        for j in range(self.k-1):
-            c.add(self.set_ancillas_to_num(self.ancillas, self.k))
-            for i in range(self.n):
-                if j < i:
-                    c.add(self.add_negates_for_check(self.ancillas, self.k-j))
-                    if i < self.k:
-                        c.add(self.swap_rows(
-                            i, j, self.ancillas+[self.perm[i]]))
-                    else:
-                        c.add(self.add_pivot(j, i-self.k,
-                              self.ancillas+[self.perm[i]]))
-                        c.add(self.lower_col_elimination(
-                            j, i-self.k, self.ancillas+[self.perm[i]]))
-                    c.add(self.add_negates_for_check(self.ancillas, self.k-j))
-                c.add(self.sub_one(self.ancillas, [self.perm[i]]))
+        c = Circuit(self.nq)
 
-        # perform backsubstitution
-        for j in range(self.k-1):
-            c.add(self.set_ancillas_to_num(self.ancillas, self.k))
-            for i in reversed(range(self.n)):
-                if self.k-j-1 <= i and i >= self.k:
-                    c.add(self.add_negates_for_check(self.ancillas, self.k-j))
-                    c.add(self.upper_col_elimination(self.k-j-1,
-                          i-self.k, self.ancillas+[self.perm[i]]))
-                    c.add(self.add_negates_for_check(self.ancillas, self.k-j))
-                c.add(self.sub_one(self.ancillas, [self.perm[i]]))
+        for i in self.perm:
+            if i != 0:
+                c.add(self.swap_to_front(i, [self.perm[i]]))
+
+        for i in range(self.k-1):
+            c.add(self.add_pivot(i, i, []))
+            c.add(self.lower_col_elimination(i, i, []))
+        for i in reversed(range(1, self.k)):
+            c.add(self.upper_col_elimination(i, i, []))
+        return c
+
+    def solve_system_isd(self):
+        '''Solve a linear system using a quantum computer for the qubit saving method.
+        Returns:
+            c (qibo.models.Circuit): quantum circuit that implements quantum Gaussian elimination
+                                     in order to solve a linear system.
+
+        '''
+        c = Circuit(self.nq)
+
+        c.add(self.set_ancillas_to_num(self.ancillas, self.k))
+
+        for j in reversed(range(self.k)):
+            for num in reversed(range(j+1, self.k+1)):
+                if num != j+1:
+                    c.add(self.add_negates_for_check(self.ancillas, num))
+                    c.add(self.swap_rows(j, num-1, self.ancillas +
+                          [self.perm[j+self.n-self.k]]))
+                    c.add(self.add_negates_for_check(self.ancillas, num))
+            c.add(self.sub_one(self.ancillas, [self.perm[j+self.n-self.k]]))
+
+        for i in range(self.n-self.k):
+            c.add(gates.X(self.aux[i]).controlled_by(self.perm[i]))
+            c.add(self.swap_bit_to_front(i, self.aux, [self.perm[i]]))
+            c.add(self.swap_to_front(i, [self.perm[i]]))
+            c.add(self.sub_one(self.ancillas, [self.perm[i]]))
+
+        for i in range(min(self.k, self.n-self.k)):
+            c.add(self.add_pivot(i, i, [self.aux[i]]))
+            c.add(self.lower_col_elimination(i, i, [self.aux[i]]))
+
+        for i in reversed(range(1, min(self.k, self.n-self.k))):
+            c.add(self.upper_col_elimination(i, i, [self.aux[i]]))
+
         return c
 
     def syndrome_weight(self):
@@ -461,118 +521,275 @@ class isd_quantum:
                                      into the ancillary register.
 
         '''
-        c = Circuit(self.n+self.n_anc+(self.n-self.k+1)*self.k)
+        c = Circuit(self.nq)
         for i in range(self.k):
             c.add(self.add_one(
-                self.ancillas[::-1], [self.Hq[i][self.n-self.k]]))
+                self.ancillas[::-1], [self.Hq[i][self.n-self.lb*self.k]]))
         return c
 
     def find_syndrome(self):
-        '''Combination of solving the system and adding the syndrome weight.
+        '''Combination of solving the system and adding the syndrome weight for isd.
         Returns:
             c (qibo.models.Circuit): quantum circuit that combines the solution of the linear code
                                      with finding the syndrome weight.
 
         '''
-        c = Circuit(self.n+self.n_anc+(self.n-self.k+1)*self.k)
-        c += self.solve_system()
+        c = Circuit(self.nq)
+        c += self.solve_system_isd()
         c += self.syndrome_weight()
         return c
 
-    def check_isd(self, nshots=10000):
+    def enumerate_p_out_of_k(self, weight, p):
+        '''Check that the column choice satisfies the correct weight when added to the
+        remaining not chosen columns. Adds how many times its satisfied into a counter
+        register.
+        Args:
+            weight (int): target weight of the problem.
+            p (int): weight allowed to be outside of the chosen set of columns.
+
+        Returns:
+            c (qibo.models.Circuit): quantum circuit that combines the adds the number of
+                                     successes to a counter register.
+
+        '''
+        def find_set_bits(x, n):
+            '''Auxiliary function for lee_brickell.
+
+            '''
+            bits = []
+            for i in range(n):
+                mask = 1 << i
+                if mask & x:
+                    bits.append(i)
+            return bits
+
+        c = Circuit(self.nq)
+        r = self.n-self.k
+        setb = (1 << p) - 1
+        limit = (1 << r)
+
+        while setb < limit:
+            columns_to_add = find_set_bits(setb, r)
+            for i in columns_to_add:
+                c.add(self.col_add(self.n, i+self.k, []))
+
+            # CHECK WEIGHTS
+            c.add(self.syndrome_weight().on_qubits(*range(c.nqubits)))
+
+            c.add(self.add_negates_for_check(self.ancillas[::-1], weight-p))
+            c.add(self.add_one(self.counter[::-1], [*self.ancillas]))
+            c.add(self.add_negates_for_check(self.ancillas[::-1], weight-p))
+
+            c.add(self.syndrome_weight().invert().on_qubits(
+                *range(c.nqubits)))
+
+            for i in columns_to_add:
+                c.add(self.col_add(self.n, i+self.k, []))
+
+            C = setb & - setb
+            R = setb + C
+            setb = int(((R ^ setb) >> 2) / C) | int(R)
+
+        return c
+
+    def check_isd(self, nshots=10000, solutions=None):
         '''Check that the quantum isd algorithm works as expected.
         Args:
             nshots (int): number of samples to take from the final quantum state.
+            solutions (list): known solutions of the system to check against.
 
         '''
-        c = Circuit(self.n+self.n_anc+(self.n-self.k+1)*self.k)
+        c = Circuit(self.nq)
         c.add(self.superposition_circuit().on_qubits(*range(self.n+self.n_anc)))
         c.add(self.initialize_matrix().on_qubits(
             *self.Hq.transpose().flatten()))
-        c += self.find_syndrome()
-        c.add(gates.M(*(self.perm+[self.Hq[i, self.n-self.k]
-              for i in range(self.k)]+self.ancillas)))
+        if self.lb:
+            c += self.solve_system_isd()
+        else:
+            c += self.solve_system_lb()
+        c.add(gates.M(*([self.Hq[i, self.n-self.lb*self.k]
+              for i in range(self.k)]+self.perm)))
         result = c(nshots=nshots)
-        print('-'*73)
-        print('| Column choices  | Syndrome        | Syndrome weight | Probability     |')
-        print('-'*73)
+        print('-'*55)
+        print('| Column choices  | Syndrome        | Probability     |')
+        print('-'*55)
         for i in result.frequencies():
-            print('|', i[:self.n], ' '*(14-self.n), '|', i[self.n:self.n+self.k], ' '*(14-self.k), '|', i[self.n+self.k:],
-                  ' '*(14-self.n_anc), '|', result.frequencies()[i]/nshots, ' '*(14-len(str(result.frequencies()[i]/nshots))), '|')
-            print('-'*73)
+            print('|', i[self.k:], ' '*(14-self.n), '|', i[:self.k], ' '*(14-self.k), '|', result.frequencies()[i]/nshots, ' '*(14-len(str(result.frequencies()[i]/nshots))), '|')
+            print('-'*55)
         print('\n')
+        if solutions:
+            if all(i in result.frequencies().keys() for i in solutions):
+                print("Circuit works correct")
+            else:
+                print("Circuit works erroneous")
+                a=set([])
+                for i in solutions:
+                    if i not in m.frequencies().keys() and i not in a:
+                        a.add(i)
+
+                print("missing:")
+                print(a)
 
     def isd_oracle(self, target):
         '''Create an oracle that solves quantum isd for a target weight 
            suitable for amplitude amplification.
         Args:
             target (int): target weight of the syndrome that solved the system.
-            
+
         Returns:
             c (qibo.models.Circuit): circuit that implements the oracle for amplitude
                                      amplification. changes the sign of the target weight.
 
         '''
-        c = Circuit(self.n+self.n_anc+(self.n-self.k+1)*self.k+1)
+        c = Circuit(self.nq+1)
         c.add(self.initialize_matrix().on_qubits(
             *self.Hq.transpose().flatten()))
-        c.add(self.find_syndrome().on_qubits(
-            *range(self.n+self.n_anc+(self.n-self.k+1)*self.k)))
+        c.add(self.find_syndrome().on_qubits(*range(self.nq)))
         c.add(self.add_negates_for_check(self.ancillas[::-1], target))
         c.add(gates.X(c.nqubits-1).controlled_by(*self.ancillas))
         c.add(self.add_negates_for_check(self.ancillas[::-1], target))
-        c.add(self.find_syndrome().invert().on_qubits(
-            *range(self.n+self.n_anc+(self.n-self.k+1)*self.k)))
+        c.add(self.find_syndrome().invert().on_qubits(*range(self.nq)))
         c.add(self.initialize_matrix().invert().on_qubits(
             *self.Hq.transpose().flatten()))
         return c
 
-    def check_solution(self, perm, H, s, target):
-        '''Check if a given permutation outputs the desired target weight.
+    def lb_oracle(self, weight, p):
+        '''Oracle that changes the sign of a column choice if the counter resiter is at 1
+        or more.
         Args:
-            perm (list): choice of columns to check.
-            H (np.array): parity check matrix.
-            s (np.array): original syndrome.
-            target (int): target weight of the syndrome by the end.
-            
+            weight (int): target weight of the problem.
+            p (int): weight allowed to be outside of the chosen set of columns.
+
         Returns:
-            (bool): True if the weight of the resulting syndrome is equal to the target.
+            c (qibo.models.Circuit): quantum circuit that applies a grover oravle for
+                                     the lee_brickell case.
 
         '''
-        def solve_gf2(A, t):
+        c = Circuit(self.nq+1)
+        c.add(self.initialize_matrix().on_qubits(
+            *self.Hq.transpose().flatten()))
+        c.add(gates.X(c.nqubits-1))
+        c.add(self.enumerate_p_out_of_k(weight, p).on_qubits(*range(self.nq)))
+        c.add([gates.X(i) for i in self.counter])
+        c.add(gates.X(c.nqubits-1).controlled_by(*self.counter))
+        c.add([gates.X(i) for i in self.counter])
+        c.add(self.enumerate_p_out_of_k(
+            weight, p).invert().on_qubits(*range(self.nq)))
+        c.add(self.initialize_matrix().invert().on_qubits(
+            *self.Hq.transpose().flatten()))
+        return c
+
+    def check_solution(self, perm, A, b, target, lee_brickell=0):
+        '''Check if a given permutation outputs the desired target weight.
+        Args:
+            perm (str): string of 0's and 1's of the column choice output by the search
+                        algorithm
+            A (np.array): initial matrix we want to solve.
+            b (np.array): initial value for the syndrome.
+            target (int): target weight.
+            lee_brickell (int): weight allowed to be outside column choice.
+
+        Returns:
+            True if the column choice solves the system.
+            False otherwise.
+
+        '''
+        def find_set_bits(x, n):
+            '''Auxiliary function for lee_brickell.
+
+            '''
+            bits = []
+            for i in range(n):
+                mask = 1 << i
+                if mask & x:
+                    bits.append(i)
+            return bits
+        
+        def solve_gf2(A,t):
             '''Solve a linear system of equations in the F2 field.
             Args:
                 A (np.array): Matrix to solve.
                 t (np.array): target vector.
-            
+
             Returns:
                 b (np.array): solution of the linear system.
-            
+
             '''
-            r = A.shape[0]
-            b = np.copy(t)
-            for i in range(r):
-                for j in range(i+1, r):
-                    if A[j, i] == 1:
-                        if A[i, i] != 1:
-                            A[i] ^= A[j]
-                            b[i] ^= b[j]
-                        A[j] ^= A[i]
-                        b[j] ^= b[i]
-                if A[i, i] != 1:
+            r=A.shape[0]
+            b=np.copy(t)
+            for i in range(r):    
+                for j in range(i+1,r):
+                    if A[j,i]==1:
+                        if A[i,i]!=1:
+                            A[i]^=A[j]
+                            b[i]^=b[j]
+                        A[j]^=A[i]
+                        b[j]^=b[i]
+                if A[i,i]!=1:
                     return False
             for i in reversed(range(r)):
                 for j in range(i):
-                    if A[j, i] == 1:
-                        A[j] ^= A[i]
-                        b[j] ^= b[i]
+                    if A[j,i]==1:
+                        A[j]^=A[i]
+                        b[j]^=b[i]
             return b
 
-        P = np.matrix(H).transpose()
-        L = []
-        for i in range(self.n):
-            if perm[i] == "1":
+        P=np.matrix(A).transpose()
+        L=[]
+        n = A.shape[1]
+        k = A.shape[0]
+        for i in range(n):
+            if perm[i]=="1":
                 L.append(P[i].tolist()[0])
-        Hp = np.matrix(L).transpose()
-        x = solve_gf2(Hp, s) % 2
-        return np.int(np.sum(x)) == target
+        
+        if lee_brickell==0:
+            Hp=np.matrix(L).transpose()
+            x=solve_gf2(Hp,b)%2
+            return np.int(np.sum(x))==target
+
+        else:
+            #to systematic form
+            for i in range(n):
+                if perm[i]=="0":
+                    L.append(P[i].tolist()[0])
+            Hp=np.matrix(L).transpose()
+            x=solve_gf2(Hp,b)
+            
+            #if system not invertible
+            try:
+                len(x)
+            except:
+                return False
+            
+            p=lee_brickell
+            setb = (1 << p) - 1;
+            limit = (1 << (n-k));
+            while setb < limit:
+                res=[int(i) for i in x]
+                columns_to_add=find_set_bits(setb,n-k)
+                
+                #add those columns to syndrome, note that indices need to be shifted by k
+                for i in columns_to_add:
+                    for j in range(len(res)):
+                        res[j]^=Hp[j,k+i]
+                
+                if np.int(np.sum(res))==target-p:
+                    #reconstruct solution (reverse permutation)
+                    z=[0 for _ in range(n)]
+                    c1=c0=0
+                    for i in range(n):
+                        if perm[i]=="1":
+                            z[i]=int(res[c1])
+                            c1+=1
+                        else:
+                            if c0 in columns_to_add:
+                                z[i]=1
+                            c0+=1
+                    print(f'Correct solution found: {z}')
+                    return True
+                    
+                #gives next binary number with p bits out of k set to one
+                c = setb & - setb;
+                v = setb + c;
+                setb = int(((v ^ setb) >> 2) / c) | int(v);
+            return False
